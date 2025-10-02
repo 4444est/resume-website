@@ -1,7 +1,9 @@
 export class ColorGenerator {
 	constructor(colorPalette) {
 		this.colorPalette = colorPalette;
-		this.currentColorIndex = -1; // Initialize with -1 to indicate no color has been selected yet
+		this.currentColorIndex = Math.floor(Math.random() * this.colorPalette.length);
+		this.colors = ["maroon", "red", "lightRed", "orange", "yellow", "lightGreen", "green", 
+									"teal", "blue", "purple", "lightPurple"];
 	}
 
 	getRandomColorFromPalette() {
@@ -15,11 +17,24 @@ export class ColorGenerator {
 		} while (randomIndex === this.currentColorIndex && this.colorPalette.length > 1); // Ensure a different color, if possible
 
 		this.currentColorIndex = randomIndex; // Update the current color index
+		console.log(this.colors[randomIndex]);
 		return this.colorPalette[randomIndex]; // Return the new color
 	}
 
+	getNextColorFromPalette() {
+		if (this.colorPalette.length < 2) {
+			console.error("Palette needs at least two colors to work properly");
+			return null; // Guard clause to handle palettes with less than two colors
+		}
+		console.log(this.colors[(this.currentColorIndex+1) % this.colorPalette.length]);
+		return this.colorPalette[++this.currentColorIndex % this.colorPalette.length];
 
   }
+
+	getCurrentColor() {
+		return this.colorPalette[this.currentColorIndex];
+	}
+}
 
 
 export function getRandomColorWithLightness(lightness) {

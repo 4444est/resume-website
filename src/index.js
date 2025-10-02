@@ -7,27 +7,56 @@ import { UnrealBloomPass } from 'jsm/postprocessing/UnrealBloomPass.js';
 import { FontLoader } from 'jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'jsm/geometries/TextGeometry.js';
 import { ColorGenerator } from './support.js';
-import { GUI } from 'dat.gui';
 
-// // GUI
-const gui = new GUI();
 
 // TOOLTIPS
 let tooltipHovered = false;
+
+// GESTURE INDICATOR
+let userHasInteracted = false;
+let gestureShown = false;
+let gestureIndicator;
 const tooltipNames = [`<i class="fa-regular fa-file"></i> Resume`, 
                       `<i class="fa-brands fa-github"></i> Github`, 
                       `<i class="fa-brands fa-linkedin"></i> LinkedIn`, 
-                      `<i class="fa-regular fa-envelope"></i> Email Me`];
-const tooltipLinks = ["https://docs.google.com/document/d/1IHOdzdLQQfuAtyiyIgnkn--9ApZSdtnDXZfKimopYvE/edit?usp=sharing", 
+                      `<i class="fa-regular fa-envelope"></i> Email Me`,
+                      `orpheus.org`,
+                      `lyrictype.com`,
+                      `Codagotchi`];
+
+const tooltipLinks = ["https://drive.google.com/file/d/1k0B7-JGCkjwUE8SbJPb6DupwF1zOMkev/view?usp=drive_link", 
                       "https://github.com/4444est", 
                       "https://www.linkedin.com/in/forrest-hartley-a87810172/", 
-                      "mailto:forresth2000@gmail.com"];
+                      "mailto:forresth2000@gmail.com",
+                      "https://mediumaquamarine-tarsier-833648.hostingersite.com/",
+                      "https://lyrictype.com",
+                      "https://github.com/pixl-garden/codagotchi"];
+
+// Project categories - define which tooltips are projects and their types
+const tooltipCategories = [
+  null, // Resume - regular tooltip
+  null, // Github - regular tooltip  
+  null, // LinkedIn - regular tooltip
+  null, // Email - regular tooltip
+  'orpheus-website', // Orpheus Website
+  'lyrictype-webapp',  // LyricType Web-app
+  'codagotchi-extension' // Codagotchi VSCode Extension
+];
+
 const tooltips = [];
+
+const backButton = `<div id="back-btn><i class="fa-solid fa-arrow-down"></i></div>`;
 
 const createTooltips = () => {
   for (let i = 0; i < tooltipNames.length; i++) {
     const tooltip = document.createElement("div");
     tooltip.classList.add("tooltip");
+    
+    // Add project category class if this tooltip is a project
+    if (tooltipCategories[i]) {
+      tooltip.classList.add(tooltipCategories[i]);
+    }
+    
     tooltip.innerHTML = tooltipNames[i];
     // handle tooltip click events
     tooltip.addEventListener("click", function() {
@@ -48,9 +77,55 @@ const createTooltips = () => {
 
 createTooltips();
 
+// GESTURE INDICATOR FUNCTIONS
+function initializeGestureIndicator() {
+  gestureIndicator = document.getElementById('gestureIndicator');
+  console.log('Gesture indicator element:', gestureIndicator);
+  
+  if (!gestureIndicator) {
+    console.error('Gesture indicator element not found!');
+    return false;
+  }
+  return true;
+}
+
+function showGestureIndicator() {
+  console.log('showGestureIndicator called', { userHasInteracted, gestureShown });
+  
+  if (!gestureIndicator && !initializeGestureIndicator()) {
+    return;
+  }
+  
+  if (!userHasInteracted && !gestureShown) {
+    console.log('Adding show class to gesture indicator');
+    gestureIndicator.classList.add('show');
+    gestureShown = true;
+    
+    console.log('Gesture indicator classes:', gestureIndicator.className);
+    console.log('Gesture indicator styles:', getComputedStyle(gestureIndicator).visibility, getComputedStyle(gestureIndicator).opacity);
+    
+  }
+}
+
+function hideGestureIndicator() {
+  if (!gestureIndicator) return;
+  
+  console.log('Hiding gesture indicator');
+  gestureIndicator.classList.remove('show');
+  gestureShown = false;
+}
+
+function markUserInteraction() {
+  if (!userHasInteracted) {
+    console.log('User interaction detected');
+    userHasInteracted = true;
+    hideGestureIndicator();
+  }
+}
+
 // TEXT
 const loader = new FontLoader();
-loader.load('./fonts/Comfortaa_Regular', function(font) {
+loader.load('./Comfortaa_Regular.json', function(font) {
   const smileGeometry = new TextGeometry(')', {
     font: font,
     size: 14, // Adjust the size
@@ -100,9 +175,6 @@ controls.enablePan = false; // disable panning
 
 const renderPass = new RenderPass(scene, camera);
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.1, 0.4, 100);
-bloomPass.threshold = 2;
-bloomPass.strength = 1;
-bloomPass.radius = 0;
 
 const composer = new EffectComposer(renderer);
 composer.addPass(renderPass);
@@ -110,12 +182,24 @@ composer.addPass(bloomPass);
 
 
 // CORE OBJECT
+const coreGeometry = new THREE.IcosahedronGeometry(0.75, 5);
+const coreMaterial = new THREE.MeshBasicMaterial({
+  color: 0xFFFFFF,
+  // emissive: 0x771818,
+});
+const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+scene.add(coreMesh);
+
+
 const geometry = new THREE.IcosahedronGeometry(1, 2);
 const material = new THREE.MeshStandardMaterial({ 
     color: 0xffffff,
     flatShading: true,
-    roughness: 0,
-    shininess: 100,
+    roughness: 0.5,
+    metalness: 0.2, 
+    opacity: 0.85,
+    transparent: true,
+    side: THREE.DoubleSide,
 });
 const mainMesh = new THREE.Mesh(geometry, material);
 scene.add(mainMesh);
@@ -159,16 +243,43 @@ for (let i = 0; i < positionAttribute.count; i++) {
 wireMesh.add(group);
 
 
-// LIGHTING
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x000000);
-// scene.add(hemiLight);
+// ZOOMING ANIMATION
+let isZoomed = false;
 
+const perspectiveTween = new TWEEN.Tween(camera.position)
+  .to({ x: 0, y: 0, z: 3 }, 3000) 
+  .easing(TWEEN.Easing.Quadratic.InOut)
+  .onComplete(() => {
+    // Show gesture indicator 5 seconds after zoom completes
+    setTimeout(() => {
+      console.log("Showing gesture indicator");
+      showGestureIndicator();
+    }, 5000);
+  });
+  
+  // TIMER
+  const timer = new THREE.Clock();
+
+
+// LIGHTING
+// const hemiLight = new THREE.HemisphereLight(0xffffff, 0x000000);
+// scene.add(hemiLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
 scene.add(dirLight);
+
 
 // ANIMATION/GAME LOOP
 function animate() {
   requestAnimationFrame(animate);
+
+  let elapsedTime = timer.getElapsedTime();
+
+  // Trigger event after 3 seconds
+  if (elapsedTime > 3 && !isZoomed) {
+      console.log("Event triggered after 3 seconds within the animation loop");
+      isZoomed = true;
+      perspectiveTween.start();
+  }
 
   // Update controls each frame
   controls.update(); 
@@ -181,7 +292,7 @@ function animate() {
     // Get the world position of the mesh
     mesh.getWorldPosition(position);
 
-    // Check if the mesh is behind the mainMesh
+    // check if the point mesh is behind the mainMesh
     const normal = new THREE.Vector3().subVectors(position, mainMesh.position).normalize();
     const cameraToPoint = new THREE.Vector3().subVectors(position, camera.position).normalize();
     const isBehind = normal.dot(cameraToPoint) > 0.42;
@@ -199,22 +310,35 @@ function animate() {
 
     // show or hide the tooltip based on visibility
     if (tooltip instanceof HTMLElement) {
-      if (isBehind || camera.position.z > 6) {
+      if (isBehind || camera.position.z > 4) {
         tooltip.style.display = 'none';
       } else {
-        tooltip.style.display = 'block';
-        tooltip.style.top = `${position.y}px`;
-        tooltip.style.left = `${position.x}px`;
+        // Check if position is within viewport bounds
+        const isInViewport = position.x >= 0 && position.x <= window.innerWidth && 
+                            position.y >= 0 && position.y <= window.innerHeight;
+        
+        if (isInViewport) {
+          // Use flex for lyrictype-webapp tooltip, block for others
+          if (tooltip.classList.contains('lyrictype-webapp')) {
+            tooltip.style.display = 'flex';
+          } else {
+            tooltip.style.display = 'block';
+          }
+          tooltip.style.top = `${position.y}px`;
+          tooltip.style.left = `${position.x}px`;
+        } else {
+          tooltip.style.display = 'none';
+        }
       }
     } else {
       console.error('Tooltip is not a valid DOM element:', tooltip);
     }
   });
 
-  mainMesh.rotation.x -= 0.001;
-  mainMesh.rotation.y -= 0.001;
-  wireMesh.rotation.x -= 0.001;
-  wireMesh.rotation.y -= 0.001;
+  mainMesh.rotation.x -= 0.0003;
+  mainMesh.rotation.y -= 0.0003;
+  wireMesh.rotation.x -= 0.0003;
+  wireMesh.rotation.y -= 0.0003;
   TWEEN.update();
   composer.render(scene, camera);
 }
@@ -223,9 +347,24 @@ function animate() {
 animate();
 
 // COLOR SELECTION
-const colorPallete = ['#E47EDB', '#514B95', '#7D8CC4', '#A0D2DB', '#4EBD96', '#B52270', '#E9724A'];
-const colorGenerator = new ColorGenerator(colorPallete);
+// const purple = '#514B95';
+const maroon = '#B52270';
+const red = '#D81E5B';
+const lightRed = '#F0544F';
+// const pink = '#E47EDB';
+const orange = '#FF9100';
+const yellow = '#FFCC55';
+const lightGreen = '#86EB6F';
+const green = '#4EBD96';
+const teal = '#0EB5DF';
+const blue = '#167CF0';
+const purple = '#623CEA'; 
+const lightPurple = '#9A18F0'; 
+const colorPallete2 = [maroon, red, lightRed, orange, yellow, lightGreen, green, teal, blue, purple, lightPurple];
+const colorGenerator = new ColorGenerator(colorPallete2);
 
+mainMesh.material.color.set(colorGenerator.getCurrentColor());
+coreMesh.material.color.set(colorGenerator.getCurrentColor());
 
 function transitionColor(mesh, startColor, endColor, duration) {
   // Create a new color object for interpolation
@@ -247,85 +386,129 @@ function transitionColor(mesh, startColor, endColor, duration) {
 
 let isMouseDown = false;
 
-const perspectiveTween = new TWEEN.Tween(camera.position)
-  .to({ x: 0, y: 0, z: 3 }, 4000) 
-  .easing(TWEEN.Easing.Quadratic.InOut);
-
 const scaleUpTween = new TWEEN.Tween(mainMesh.scale)
-  .to({ x: 1.15, y: 1.15, z: 1.15 }, 150)
+  .to({ x: 1.18, y: 1.18, z: 1.18 }, 150)
   .easing(TWEEN.Easing.Quadratic.Out);
 
 const scaleDownTween = new TWEEN.Tween(mainMesh.scale)
-  .to({ x: 1, y: 1, z: 1 }, 300)
+  .to({ x: 1, y: 1, z: 1 }, 200)
   .easing(TWEEN.Easing.Quadratic.Out);
 
 
 const scaleUpWireTween = new TWEEN.Tween(wireMesh.scale)
-  .to({ x: 1.2, y: 1.2, z: 1.2 }, 150)
+  .to({ x: 1.25, y: 1.25, z: 1.25 }, 150)
   .easing(TWEEN.Easing.Quadratic.Out);
 
 const scaleDownWireTween = new TWEEN.Tween(wireMesh.scale)
-  .to({ x: 1, y: 1, z: 1 }, 300)
+  .to({ x: 1, y: 1, z: 1 }, 200)
+  .easing(TWEEN.Easing.Quadratic.Out);
+
+
+const scaleUpCoreTween = new TWEEN.Tween(coreMesh.scale)
+  .to({ x: 1.15, y: 1.15, z: 1.15 }, 200)
+  .easing(TWEEN.Easing.Quadratic.Out);
+
+const scaleDownCoreTween = new TWEEN.Tween(coreMesh.scale)
+  .to({ x: 1, y: 1, z: 1 }, 150)
   .easing(TWEEN.Easing.Quadratic.Out);
 
 
 
 function startEffect() {
-  // stop the scale down tween if it's running
+  // stop the scale down tweens if they are running
   scaleDownTween.stop();
   scaleDownWireTween.stop();
+  scaleDownCoreTween.stop();
   // const randomColor = getRandomColorWithLightness(40);
-  const randomColor = colorGenerator.getRandomColorFromPalette(colorPallete);
-  console.log(randomColor);
+  const nextColor = colorGenerator.getNextColorFromPalette();
+  // const nextColor = colorGenerator.getRandomColorFromPalette();
   scaleUpTween.start();
   scaleUpWireTween.start();
+  scaleUpCoreTween.start();
   // mainMesh.material.color.set(randomColor);
-  transitionColor(mainMesh, mainMesh.material.color.getHex(), randomColor, 150);
+  transitionColor(mainMesh, mainMesh.material.color.getHex(), nextColor, 150);
+  transitionColor(coreMesh, mainMesh.material.color.getHex(), nextColor, 150);
   bloomPass.strength = 0.8; // increase mesh glow
-  bloomPass.radius = 1.5;
+  bloomPass.radius = 1;
   bloomPass.threshold = 0.2;
 }
 
 function stopEffect() {
-  // stop the scale up tween if it's running
+  // stop the scale up tweens if they are running
   scaleUpTween.stop();
   scaleUpWireTween.stop();
+  scaleUpCoreTween.stop();
   // mainMesh.material.color.set(0xffffff);
   // transitionColor(mainMesh, mainMesh.material.color.getHex(), 0xffffff, 300);
   scaleDownTween.start();
   scaleDownWireTween.start();
+  scaleDownCoreTween.start();
   bloomPass.strength = 0.1; // decrease mesh glow
 }
 
 // EVENT LISTENERS
-document.addEventListener('mousedown', function (event) {
-  isMouseDown = true;
+
+// Mousedown and touchstart
+function handleStart(event) {
+  // Prevent default behavior (like scrolling) when touch event occurs
+  event.preventDefault();
+  
+  // Mark user interaction to hide gesture
+  markUserInteraction();
+  
   // only allow effects if the tooltip is not hovered
-  if(!tooltipHovered) {
+  if(!tooltipHovered && isZoomed) {
+    isMouseDown = true;
     startEffect();
   }
-});
+}
 
-document.addEventListener('mouseup', function (event) {
+document.addEventListener('mousedown', handleStart);
+document.addEventListener('touchstart', handleStart);
+
+// Mouseup and touchend
+function handleEnd(event) {
+  // Prevent default behavior when touch event occurs
+  event.preventDefault();
+
+  if (isMouseDown && isZoomed) {
+    isMouseDown = false;
+    stopEffect();
+  }
+}
+
+document.addEventListener('mouseup', handleEnd);
+document.addEventListener('touchend', handleEnd);
+
+// Mouseleave and touchleave (use touchcancel to cover touchleave equivalent)
+function handleLeave(event) {
+  // Prevent default behavior when touch event occurs
+  event.preventDefault();
+
   if (isMouseDown) {
     isMouseDown = false;
     stopEffect();
   }
-});
+}
 
-// handle mouse leave to ensure the effect stops if the mouse is released outside the window
-document.addEventListener('mouseleave', function (event) {
-  if (isMouseDown) {
-    isMouseDown = false;
-    stopEffect();
-  }
-});
+document.addEventListener('mouseleave', handleLeave);
+document.addEventListener('touchcancel', handleLeave);
 
-window.addEventListener('click', function (event) {
+// Click and tap
+function handleClick(event) {
+  // Prevent default behavior when touch event occurs
+  event.preventDefault();
+
   if( camera.position.z > 120 ) {
+    isZoomed = true;
     perspectiveTween.start();
   }
-});
+}
+
+window.addEventListener('click', handleClick);
+window.addEventListener('touchend', handleClick);
+
+
 
 
 // Resize canvas on window resize
@@ -339,4 +522,5 @@ function handleWindowResize() {
   renderer.setSize(width, height);
 }
 window.addEventListener('resize', handleWindowResize, false);
+
 
